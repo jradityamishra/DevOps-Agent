@@ -52,16 +52,23 @@ jobs:
 
           LOGS=$(jq -Rs . < logs/payload.txt)
           SESSION=$(cat /proc/sys/kernel/random/uuid)
-          BODY="{\"output_type\":\"chat\",\"input_type\":\"chat\",\"input_value\":$LOGS,\"session_id\":\"$SESSION\"}"
+          jq -n \
+            --argjson logs "$LOGS" \
+            --arg sid "$SESSION" \
+            '{output_type:"chat", input_type:"chat", input_value:$logs, session_id:$sid}' \
+            > logs/body.json
 
-          RESPONSE=$(curl -sSL -X POST "$AGENT_API_URL" \
+          HTTP_CODE=$(curl -sS -o logs/agent-response.json -w "%{http_code}" \
+            -L --post301 --post302 --post303 \
+            -X POST "$AGENT_API_URL" \
             -H "Content-Type: application/json" \
+            -H "Accept: application/json" \
             -H "x-api-key: $AGENT_API_KEY" \
-            -d "$BODY")
+            --data-binary @logs/body.json)
 
+          echo "HTTP status: $HTTP_CODE"
           echo "Agent response:"
-          echo "$RESPONSE"
-          echo "$RESPONSE" > logs/agent-response.json
+          cat logs/agent-response.json
 
       - name: Upload agent response as artifact
         uses: actions/upload-artifact@v4
