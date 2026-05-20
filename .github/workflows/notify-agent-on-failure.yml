@@ -2,7 +2,7 @@ name: Notify Agent on Failure
 
 on:
   workflow_run:
-    workflows: ["<MAIN_WORKFLOW_NAME>"]
+    workflows: ["Vercel Deploy"]
     types: [completed]
 
 permissions:
