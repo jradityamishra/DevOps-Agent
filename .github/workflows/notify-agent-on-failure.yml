@@ -29,7 +29,7 @@ jobs:
             -o logs/logs.zip
           unzip -o logs/logs.zip -d logs > /dev/null
           find logs -type f \( -name "*.txt" -o -name "*.log" \) -exec cat {} \; > logs/all.log
-          head -c 12000 logs/all.log > logs/trimmed.log
+          head -c 4000 logs/all.log > logs/trimmed.log
           echo "Log size: $(wc -c < logs/trimmed.log) bytes"
 
       - name: Send logs to Agent
@@ -58,9 +58,17 @@ jobs:
             '{output_type:"chat", input_type:"chat", input_value:$logs, session_id:$sid}' \
             > logs/body.json
 
+          # Ensure stream=false is set on the agent URL to avoid gateway timeouts.
+          if [[ "$AGENT_API_URL" == *"?"* ]]; then
+            FINAL_URL="${AGENT_API_URL}&stream=false"
+          else
+            FINAL_URL="${AGENT_API_URL}?stream=false"
+          fi
+
           HTTP_CODE=$(curl -sS -o logs/agent-response.json -w "%{http_code}" \
+            --max-time 600 \
             -L --post301 --post302 --post303 \
-            -X POST "$AGENT_API_URL" \
+            -X POST "$FINAL_URL" \
             -H "Content-Type: application/json" \
             -H "Accept: application/json" \
             -H "x-api-key: $AGENT_API_KEY" \
