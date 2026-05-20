@@ -29,8 +29,8 @@ jobs:
             -o logs/logs.zip
           unzip -o logs/logs.zip -d logs > /dev/null
           find logs -type f \( -name "*.txt" -o -name "*.log" \) -exec cat {} \; > logs/all.log
-          head -c 1500 logs/all.log > logs/trimmed.log
-          echo "Log size: $(wc -c < logs/trimmed.log) bytes"
+          tail -n 100 logs/all.log > logs/trimmed.log
+          echo "Log size: $(wc -l < logs/trimmed.log) lines, $(wc -c < logs/trimmed.log) bytes"
 
       - name: Send logs to Agent
         env:
