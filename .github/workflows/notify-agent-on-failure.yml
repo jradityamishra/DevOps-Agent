@@ -1,0 +1,70 @@
+name: Notify Agent on Failure
+
+on:
+  workflow_run:
+    workflows: ["<MAIN_WORKFLOW_NAME>"]
+    types: [completed]
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  send-logs:
+    if: ${{ github.event.workflow_run.conclusion == 'failure' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download failed run logs
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RUN_ID: ${{ github.event.workflow_run.id }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -e
+          mkdir -p logs
+          curl -sSL \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/$REPO/actions/runs/$RUN_ID/logs" \
+            -o logs/logs.zip
+          unzip -o logs/logs.zip -d logs > /dev/null
+          find logs -type f \( -name "*.txt" -o -name "*.log" \) -exec cat {} \; > logs/all.log
+          head -c 12000 logs/all.log > logs/trimmed.log
+          echo "Log size: $(wc -c < logs/trimmed.log) bytes"
+
+      - name: Send logs to Agent
+        env:
+          AGENT_API_URL: ${{ secrets.AGENT_API_URL }}
+          AGENT_API_KEY: ${{ secrets.AGENT_API_KEY }}
+          RUN_URL: ${{ github.event.workflow_run.html_url }}
+          REPO: ${{ github.repository }}
+          BRANCH: ${{ github.event.workflow_run.head_branch }}
+        run: |
+          set -e
+          {
+            echo "Repository: $REPO"
+            echo "Branch: $BRANCH"
+            echo "Failed Run: $RUN_URL"
+            echo ""
+            echo "--- LOGS ---"
+            cat logs/trimmed.log
+          } > logs/payload.txt
+
+          LOGS=$(jq -Rs . < logs/payload.txt)
+          SESSION=$(cat /proc/sys/kernel/random/uuid)
+          BODY="{\"output_type\":\"chat\",\"input_type\":\"chat\",\"input_value\":$LOGS,\"session_id\":\"$SESSION\"}"
+
+          RESPONSE=$(curl -sS -X POST "$AGENT_API_URL" \
+            -H "Content-Type: application/json" \
+            -H "x-api-key: $AGENT_API_KEY" \
+            -d "$BODY")
+
+          echo "Agent response:"
+          echo "$RESPONSE"
+          echo "$RESPONSE" > logs/agent-response.json
+
+      - name: Upload agent response as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: agent-failure-analysis
+          path: logs/agent-response.json
