@@ -54,7 +54,7 @@ jobs:
           SESSION=$(cat /proc/sys/kernel/random/uuid)
           BODY="{\"output_type\":\"chat\",\"input_type\":\"chat\",\"input_value\":$LOGS,\"session_id\":\"$SESSION\"}"
 
-          RESPONSE=$(curl -sS -X POST "$AGENT_API_URL" \
+          RESPONSE=$(curl -sSL -X POST "$AGENT_API_URL" \
             -H "Content-Type: application/json" \
             -H "x-api-key: $AGENT_API_KEY" \
             -d "$BODY")
