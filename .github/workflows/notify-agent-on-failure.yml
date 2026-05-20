@@ -29,7 +29,28 @@ jobs:
             -o logs/logs.zip
           unzip -o logs/logs.zip -d logs > /dev/null
           find logs -type f \( -name "*.txt" -o -name "*.log" \) -exec cat {} \; > logs/all.log
-          tail -n 100 logs/all.log > logs/trimmed.log
+
+          # Keep only the last 2000 lines as candidate window.
+          tail -n 2000 logs/all.log > logs/window.log
+
+          # Strip ANSI color codes and GitHub Actions timestamps for cleaner input.
+          sed -E 's/\x1B\[[0-9;]*[A-Za-z]//g' logs/window.log \
+            | sed -E 's/^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9:.]+Z[[:space:]]*//' \
+            > logs/clean.log
+
+          # Extract only error-relevant lines with 3 lines before and 5 after as context.
+          grep -E -n -B 3 -A 5 -i \
+            "error|failed|failure|exception|fatal|denied|not found|cannot|unable|\[error\]|##\[error\]|exit code [1-9]" \
+            logs/clean.log > logs/errors.log || true
+
+          # If nothing matched, fall back to the last 200 cleaned lines.
+          if [ ! -s logs/errors.log ]; then
+            tail -n 200 logs/clean.log > logs/errors.log
+          fi
+
+          # Safety cap: at most 2000 lines and 16 KB.
+          head -n 2000 logs/errors.log | head -c 16000 > logs/trimmed.log
+
           echo "Log size: $(wc -l < logs/trimmed.log) lines, $(wc -c < logs/trimmed.log) bytes"
 
       - name: Send logs to Agent
@@ -75,11 +96,20 @@ jobs:
             --data-binary @logs/body.json)
 
           echo "HTTP status: $HTTP_CODE"
-          echo "Agent response:"
-          cat logs/agent-response.json
 
-      - name: Upload agent response as artifact
+          # Extract only the agent's message text from the nested response.
+          jq -r '
+            .outputs[0].outputs[0].results.message.text
+            // .outputs[0].outputs[0].results.message.data.text
+            // .output
+            // "No analysis text returned."
+          ' logs/agent-response.json > logs/analysis.txt
+
+          echo "Agent analysis:"
+          cat logs/analysis.txt
+
+      - name: Upload agent analysis as artifact
         uses: actions/upload-artifact@v4
         with:
           name: agent-failure-analysis
-          path: logs/agent-response.json
+          path: logs/analysis.txt
