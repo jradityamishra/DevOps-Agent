@@ -3,7 +3,7 @@ import axios from "axios";
 import "dotenv/config";
 
 async function main() {
-  const logs = process.argv[2] ?? " ERROR  : npm install failed - peer dependency conflict";
+  const logs = process.argv[2] ?? "ERROR  : npm install failed - peer dependency conflict";
 
   const response = await axios.post(
     process.env.AGENT_API_URL!,
